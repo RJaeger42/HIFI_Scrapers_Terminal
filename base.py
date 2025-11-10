@@ -49,24 +49,30 @@ class BaseScraper(ABC):
     
     def _fetch_page(self, url: str, retries: int = None) -> Optional[BeautifulSoup]:
         """Fetch and parse a webpage with retry logic"""
+        from colors import info, warning
+
         if retries is None:
             retries = 3  # Default max retries
-        
+
         request_timeout = 30  # Default timeout in seconds
         retry_delay = 1  # Default delay between retries in seconds
-        
+
         for attempt in range(retries):
             try:
                 self._rate_limit()
+                print(f"{info(f'DEBUG {self.name}:')} Attempt {attempt + 1}/{retries} - GET {url}", file=sys.stderr)
                 response = self.session.get(url, timeout=request_timeout)
+                print(f"{info(f'DEBUG {self.name}:')} Response status: {response.status_code}", file=sys.stderr)
                 response.raise_for_status()
                 return BeautifulSoup(response.content, 'html.parser')
             except requests.exceptions.Timeout as e:
                 if attempt == retries - 1:
                     print(f"{error(f'Error fetching {url} after {retries} attempts:')} Timeout - {e}", file=sys.stderr)
                     return None
+                print(f"{warning(f'DEBUG {self.name}:')} Timeout on attempt {attempt + 1}, retrying...", file=sys.stderr)
                 time.sleep(retry_delay * (attempt + 1))
             except requests.exceptions.HTTPError as e:
+                print(f"{warning(f'DEBUG {self.name}:')} HTTP Error {e.response.status_code}: {e}", file=sys.stderr)
                 if attempt == retries - 1:
                     # Don't log 410 Gone as errors (site may have changed structure)
                     if e.response.status_code == 410:
@@ -78,8 +84,9 @@ class BaseScraper(ABC):
                 if attempt == retries - 1:
                     print(f"{error(f'Error fetching {url} after {retries} attempts:')} {e}", file=sys.stderr)
                     return None
+                print(f"{warning(f'DEBUG {self.name}:')} Request error on attempt {attempt + 1}: {e}, retrying...", file=sys.stderr)
                 time.sleep(retry_delay * (attempt + 1))
-        
+
         return None
     
     def _extract_price(self, text: str) -> Optional[float]:
