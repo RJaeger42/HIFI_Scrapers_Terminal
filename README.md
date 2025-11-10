@@ -7,9 +7,9 @@ Multi-scraper search tool for audio equipment across multiple marketplaces.For b
 Searches across:
 - **Blocket** - Swedish marketplace
 - **Tradera** - Swedish auction site
-- **Facebook Marketplace** - Facebook marketplace
-- **HiFiShark** - Hifi equipment search engine
+- **Facebook Marketplace** - Facebook marketplace (Stockholm region)
 - **HifiTorget** - Swedish hifi marketplace
+- **HiFiShark** - International HiFi equipment search engine (Sweden filter)
 
 ## Installation
 

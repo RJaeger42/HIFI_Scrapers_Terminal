@@ -10,7 +10,7 @@ class FacebookScraper(BaseScraper):
     """Scraper for Facebook Marketplace using Playwright for dynamic content"""
     
     def __init__(self):
-        super().__init__("https://www.facebook.com/marketplace", "Facebook Marketplace")
+        super().__init__("https://www.facebook.com", "Facebook Marketplace")
         self.browser: Optional[Browser] = None
         self.playwright = None
     
@@ -36,7 +36,7 @@ class FacebookScraper(BaseScraper):
         try:
             # Navigate to Facebook Marketplace search
             # Set location to Sweden (Stockholm) for Swedish results
-            search_url = f"{self.base_url}/stockholm/search"
+            search_url = f"{self.base_url}/marketplace/stockholm/search"
             params = {
                 'query': query,
             }
@@ -290,4 +290,3 @@ class FacebookScraper(BaseScraper):
             # Suppress cleanup errors - they're harmless
             if "Event loop is closed" not in str(e) and "closed" not in str(e).lower():
                 print(f"{error(f'Error closing {self.name}:')} {e}", file=sys.stderr)
-

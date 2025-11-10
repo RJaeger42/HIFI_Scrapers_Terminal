@@ -15,6 +15,7 @@ from blocket import BlocketScraper
 from tradera import TraderaScraper
 from facebook import FacebookScraper
 from hifitorget import HifiTorgetScraper
+from hifishark import HiFiSharkScraper
 from base import ListingResult
 
 
@@ -28,6 +29,7 @@ class AudioSearch:
             'Tradera': TraderaScraper(),
             'Facebook Marketplace': FacebookScraper(),
             'HifiTorget': HifiTorgetScraper(),
+            'HiFiShark': HiFiSharkScraper(),
         }
 
         def match_site_name(user_input: str, scraper_name: str) -> bool:
@@ -66,10 +68,10 @@ class AudioSearch:
                     print(f"{warning('Warning:')} Unrecognized site '{site}' (available: {', '.join(all_scrapers.keys())})", file=sys.stderr)
             self.scrapers = [s for s in all_scrapers.values() if s not in excluded_scrapers]
         else:
-            # Only HifiTorget enabled by default
-            self.scrapers = [all_scrapers['HifiTorget']]
+            # All scrapers enabled by default
+            self.scrapers = list(all_scrapers.values())
 
-        self.browser_scrapers = [FacebookScraper, TraderaScraper, BlocketScraper]
+        self.browser_scrapers = [FacebookScraper, TraderaScraper, BlocketScraper, HiFiSharkScraper]
 
     async def search_all(self, query: str) -> Dict[str, List[ListingResult]]:
         """Search all enabled scrapers for a given query"""
@@ -204,8 +206,8 @@ def parse_date(date_str: Optional[str]) -> Optional[datetime]:
             return datetime(year, month, day)
         except ValueError:
             pass
-    
-    # Format: "22 sep.", "17 okt", "Oct 17, 2025"
+
+    # Format: "Oct 26, 2025" or "Nov 10, 2025" (English month first format from HiFiShark)
     # Swedish month names
     swedish_months = {
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'maj': 5, 'jun': 6,
@@ -216,8 +218,22 @@ def parse_date(date_str: Optional[str]) -> Optional[datetime]:
         'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
         'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12
     }
-    
-    # Pattern: "DD MMM" or "DD MMM, YYYY"
+
+    # Pattern: "MMM DD, YYYY" (month first - HiFiShark format)
+    month_first_pattern = re.search(r'([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})', date_str)
+    if month_first_pattern:
+        try:
+            month_str = month_first_pattern.group(1).lower()
+            day = int(month_first_pattern.group(2))
+            year = int(month_first_pattern.group(3))
+
+            month = english_months.get(month_str) or swedish_months.get(month_str)
+            if month:
+                return datetime(year, month, day)
+        except (ValueError, AttributeError):
+            pass
+
+    # Pattern: "DD MMM" or "DD MMM, YYYY" (day first - traditional format)
     date_pattern = re.search(r'(\d{1,2})\s+([a-z]{3})\.?\s*(?:,?\s*(\d{4}))?', date_str, re.I)
     if date_pattern:
         try:
@@ -288,23 +304,22 @@ def filter_by_days(results: Dict[str, List[ListingResult]], days_back: int) -> D
     return filtered_results
 
 
-def format_results(results: Dict[str, List[ListingResult]], search_term: str, days_filter: Optional[int] = None):
-    """Format and print search results in a clean, readable format, sorted by date"""
+def format_results(results: Dict[str, List[ListingResult]], search_term: str, days_filter: Optional[int] = None, sort_by: str = 'date'):
+    """Format and print search results in a clean, readable format"""
     total_results = sum(len(r) for r in results.values())
 
     if total_results == 0:
-        print(f"\n🔍 No results found for: '{search_term}'")
+        print(f"\nNo results found for: '{search_term}'")
         if days_filter:
             print(f"   (Filtered to last {days_filter} days)")
         return
 
     # Print header
     print(f"\n{'═'*80}")
-    print(f"🔍 Search Results: '{search_term}'", end="")
+    print(f"Search Results: '{search_term}'", end="")
     if days_filter:
-        print(f" (last {days_filter} days)")
-    else:
-        print()
+        print(f" (last {days_filter} days)", end="")
+    print(f" [Sorted by {sort_by}]")
     print(f"{'═'*80}\n")
 
     # Combine all results from all scrapers into a single list with source info
@@ -313,42 +328,123 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
         for listing in listing_results:
             all_listings.append((scraper_name, listing))
 
-    # Sort by date (newest first)
+    # Sort based on sort_by parameter
     def get_sort_key(item):
         scraper_name, listing = item
-        if not listing.posted_date:
-            # Items without dates go to the end
-            return (1, datetime.min)
 
-        parsed_date = parse_date(listing.posted_date)
-        if parsed_date is None:
-            # Unparseable dates go to the end
-            return (1, datetime.min)
+        if sort_by == 'date':
+            # Sort by date (newest first)
+            if not listing.posted_date:
+                return (0, datetime.min)
+            parsed_date = parse_date(listing.posted_date)
+            if parsed_date is None:
+                return (0, datetime.min)
+            return (0, parsed_date)
 
-        # Return tuple: (0 for valid dates, negated datetime for newest first)
-        return (0, -parsed_date.timestamp())
+        elif sort_by == 'site':
+            # Sort by site name (alphabetical)
+            return (1, scraper_name.lower())
 
-    all_listings.sort(key=get_sort_key)
+        elif sort_by == 'price':
+            # Sort by price (lowest first, None values last)
+            if listing.price is None:
+                return (2, float('inf'))
+            try:
+                price_val = float(listing.price)
+                return (2, price_val)
+            except (TypeError, ValueError):
+                return (2, float('inf'))
 
-    # Display all results sorted by date
+    # Sort with appropriate reverse flag
+    if sort_by == 'date':
+        all_listings.sort(key=get_sort_key, reverse=True)  # Newest first
+    else:
+        all_listings.sort(key=get_sort_key)  # Alphabetical or price ascending
+
+    def sanitize(value: Optional[str]) -> str:
+        if not value:
+            return "-"
+        return " ".join(value.split())
+
+    def truncate(value: str, max_width: int) -> str:
+        if len(value) <= max_width:
+            return value
+        if max_width <= 1:
+            return value[:max_width]
+        return value[:max_width - 1] + "…"
+
+    column_specs = [
+        ("title", "Title", 48),
+        ("date", "Date", 16),
+        ("price", "Price", 14),
+        ("location", "Location", 20),
+        ("source", "Source", 26),
+    ]
+
+    rows = []
     for idx, (scraper_name, listing) in enumerate(all_listings, 1):
         title_text = (listing.title or "").strip() or "Untitled listing"
 
-        # Build compact info line with date FIRST (most important), then price, location, source
-        info_parts = []
-        if listing.posted_date:
-            info_parts.append(f"📅 {listing.posted_date}")
-        if listing.price:
-            info_parts.append(f"💰 {listing.price:,.0f} kr")
-        if listing.location:
-            info_parts.append(f"📍 {listing.location}")
-        info_parts.append(f"📦 {scraper_name}")
+        price_str = "-"
+        if listing.price is not None:
+            try:
+                price_str = f"{float(listing.price):,.0f} kr"
+            except (TypeError, ValueError):
+                price_str = sanitize(str(listing.price))
 
-        # Print everything on one row: number, title, and info
-        print(f"{idx:3d}. {title_text} | {' | '.join(info_parts)}")
+        source = scraper_name
+        if scraper_name == "HiFiShark" and listing.raw_data:
+            source_site = listing.raw_data.get('source_site')
+            if source_site:
+                source = f"{scraper_name} ({source_site})"
+
+        plain_title = f"{idx:3d}. {title_text}"
+
+        rows.append({
+            "idx": idx,
+            "title": plain_title,
+            "title_url": listing.url,
+            "date": sanitize(listing.posted_date),
+            "price": price_str,
+            "location": sanitize(listing.location),
+            "source": sanitize(source),
+        })
+
+    # Determine column widths (capped) so table stays readable
+    col_widths = {}
+    for key, label, cap in column_specs:
+        values = [row[key] for row in rows] or [label]
+        longest = max(len(value) for value in values)
+        col_widths[key] = max(len(label), min(longest, cap))
+
+    # Print header row (Title first as requested)
+    header_parts = []
+    for key, label, _ in column_specs:
+        header_parts.append(f"{label:<{col_widths[key]}}")
+    header_line = "  ".join(header_parts)
+    print(header_line)
+    print("-" * len(header_line))
+
+    # Display aligned rows
+    for row in rows:
+        line_parts = []
+        for key, _, _ in column_specs:
+            if key == "title":
+                display_value = truncate(row[key], col_widths[key])
+                if row.get("title_url"):
+                    clickable = f"\x1b]8;;{row['title_url']}\x1b\\{display_value}\x1b]8;;\x1b\\"
+                else:
+                    clickable = display_value
+                padding = max(col_widths[key] - len(display_value), 0)
+                cell = f"{clickable}{' ' * padding}"
+            else:
+                value = truncate(row[key], col_widths[key])
+                cell = f"{value:<{col_widths[key]}}"
+            line_parts.append(cell)
+        print("  ".join(line_parts))
 
     print(f"{'═'*80}")
-    print(f"✨ Total: {total_results} result{'s' if total_results != 1 else ''} found across all scrapers")
+    print(f"Total: {total_results} result{'s' if total_results != 1 else ''} found across all scrapers")
     print(f"{'═'*80}\n")
 
 
@@ -365,6 +461,7 @@ Search for audio equipment across multiple Swedish and international marketplace
   • Tradera.com (Swedish auctions)
   • Facebook Marketplace (Stockholm region)
   • HifiTorget.se (Swedish HiFi marketplace)
+  • HiFiShark.com (International HiFi marketplace - Sweden filter)
 
 Results are displayed sorted by date (newest first) across all sources.
         """,
@@ -394,11 +491,17 @@ Examples:
     %(prog)s -s "speakers" -s "amplifier" -s "turntable"
     %(prog)s -s "hegel" -s "yamaha" -d 5
 
+  Sort results:
+    %(prog)s -s "amplifier" --sort date                # Sort by date (newest first) - default
+    %(prog)s -s "speakers" --sort site                 # Sort by site name (alphabetical)
+    %(prog)s -s "receiver" --sort price                # Sort by price (lowest first)
+
 Available sites (case-insensitive):
   - Blocket           (Swedish classifieds)
   - Tradera           (Swedish auctions)
   - Facebook          (Facebook Marketplace Stockholm)
   - HifiTorget        (Swedish HiFi marketplace)
+  - HiFiShark         (International HiFi marketplace - Sweden only)
 
 Notes:
   - Results are sorted by posting date (newest first) across all marketplaces
@@ -438,7 +541,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         dest='include_sites',
         default=None,
         metavar='SITE',
-        help='Include only specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget (case-insensitive, can use multiple -i)'
+        help='Include only specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -i)'
     )
 
     parser.add_argument(
@@ -447,7 +550,17 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         dest='exclude_sites',
         default=None,
         metavar='SITE',
-        help='Exclude specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget (case-insensitive, can use multiple -e)'
+        help='Exclude specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -e)'
+    )
+
+    parser.add_argument(
+        '--sort',
+        type=str,
+        dest='sort_by',
+        default='date',
+        choices=['date', 'site', 'price'],
+        metavar='FIELD',
+        help='Sort results by: date (newest first), site (alphabetical), or price (lowest first). Default: date'
     )
 
     args = parser.parse_args()
@@ -470,8 +583,8 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                 # Apply days filter if specified
                 if args.days_back:
                     results = filter_by_days(results, args.days_back)
-                
-                format_results(results, search_term, args.days_back)
+
+                format_results(results, search_term, args.days_back, args.sort_by)
             except Exception as e:
                 from colors import error
                 print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)
