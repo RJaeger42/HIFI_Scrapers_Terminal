@@ -201,11 +201,13 @@ class HifiTorgetScraper(BaseScraper):
         title = None
         url = None
         
-        # Strategy 1: Look for title in link text
-        title_link = listing_element.find('a', href=True)
-        if title_link:
-            title = title_link.get_text(strip=True)
-            url = self._normalize_url(title_link['href'])
+        # Strategy 1: Look for title in meaningful link text (skip empty anchors like image wrappers)
+        for link in listing_element.find_all('a', href=True):
+            text = link.get_text(strip=True)
+            if text and len(text) > 2:
+                title = text
+                url = self._normalize_url(link['href'])
+                break
         
         # Strategy 2: Look for heading with title
         if not title:
@@ -234,7 +236,7 @@ class HifiTorgetScraper(BaseScraper):
         price = None
         
         # Look for price text containing "kr" or numbers
-        price_text_elem = listing_element.find(string=re.compile(r'\d+[\s.,]*\d*\s*kr', re.I))
+        price_text_elem = listing_element.find(string=re.compile(r'\d+[\s.,]*\d*\s*(kr|sek|€)', re.I))
         if price_text_elem:
             price = self._extract_price(price_text_elem)
         
@@ -288,15 +290,31 @@ class HifiTorgetScraper(BaseScraper):
         
         # Find posted date
         posted_date = None
-        date_elem = listing_element.find(string=re.compile(
-            r'\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d+\s+\w+\s+\d{4}', re.I
-        ))
-        if date_elem:
-            posted_date = date_elem.strip()
-        else:
-            date_elem = listing_element.find(class_=re.compile(r'date|datum|time|posted', re.I))
+        date_patterns = [
+            r'\d{4}-\d{2}-\d{2}',
+            r'\d{1,2}[/-]\d{1,2}[/-]\d{2,4}',
+            r'\d+\s+\w+\s+\d{4}',
+        ]
+        month_pattern = r'(?:jan|feb|mar|apr|maj|jun|jul|aug|sep|okt|nov|dec)'
+        date_patterns.append(rf'\b\d{{1,2}}\s+{month_pattern}(?:\s+\d{{2,4}})?')
+
+        for pattern in date_patterns:
+            date_elem = listing_element.find(string=re.compile(pattern, re.I))
             if date_elem:
-                posted_date = date_elem.get_text(strip=True)
+                posted_date = date_elem.strip()
+                break
+
+        if not posted_date:
+            relative_elem = listing_element.find(string=re.compile(r'(idag|igår|\d{1,2}:\d{2})', re.I))
+            if relative_elem:
+                posted_date = relative_elem.strip()
+            else:
+                date_elem = listing_element.find(class_=re.compile(r'date|datum|time|posted|inlagd', re.I))
+                if date_elem:
+                    posted_date = date_elem.get_text(strip=True)
+
+        if not posted_date and url and url != self.base_url:
+            posted_date = self._fetch_inlagd_date(url)
         
         # Find location - HifiTorget is Swedish, so look for Swedish cities
         location = None
@@ -322,6 +340,15 @@ class HifiTorgetScraper(BaseScraper):
             if match:
                 location = match.group(1).strip()
         
+        # As a final fallback, grab the first <small> element that looks like a city/region label
+        if not location:
+            for elem in listing_element.find_all('small'):
+                text = elem.get_text(strip=True)
+                if text and not re.search(r'\d', text) and len(text) > 3:
+                    if ',' in text or any(city.lower() in text.lower() for city in swedish_cities):
+                        location = text
+                        break
+        
         raw_data = {
             'html': str(listing_element)[:1000],  # Store first 1000 chars for debugging
             'title_source': 'found' if title else 'missing',
@@ -338,3 +365,29 @@ class HifiTorgetScraper(BaseScraper):
             location=location,
             raw_data=raw_data
         )
+
+    def _fetch_inlagd_date(self, url: str) -> Optional[str]:
+        """Fetch the listing detail page to extract the 'Inlagd' timestamp"""
+        try:
+            soup = self._fetch_page(url)
+            if not soup:
+                return None
+
+            # Look for text nodes that include "Inlagd"
+            inlagd_elem = soup.find(string=re.compile(r'Inlagd', re.I))
+            if inlagd_elem:
+                text = inlagd_elem
+                if hasattr(inlagd_elem, 'parent'):
+                    text = inlagd_elem.parent.get_text(" ", strip=True)
+                cleaned = re.sub(r'Inlagd[:\s]*', '', text, flags=re.I).strip()
+                return cleaned or None
+
+            # Fallback: look for elements with class names
+            container = soup.find(class_=re.compile(r'inlagd|date|datum', re.I))
+            if container:
+                text = container.get_text(" ", strip=True)
+                cleaned = re.sub(r'Inlagd[:\s]*', '', text, flags=re.I).strip()
+                return cleaned or None
+        except Exception as e:
+            print(f"{warning('DEBUG HifiTorget:')} Failed to fetch detail page for date: {e}", file=sys.stderr)
+        return None

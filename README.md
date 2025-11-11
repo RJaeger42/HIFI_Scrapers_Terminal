@@ -29,16 +29,16 @@ Search for one or more terms:
 
 ```bash
 # Single search term
-python3 audio_search.py -s "yamaha receiver"
+python3 HIFI_search.py -s "yamaha receiver"
 
 # Multiple search terms
-python3 audio_search.py -s "speakers" -s "amplifier" -s "turntable"
+python3 HIFI_search.py -s "speakers" -s "amplifier" -s "turntable"
 ```
 
 Or make it executable and run directly:
 ```bash
-chmod +x audio_search.py
-./audio_search.py -s "your search term"
+chmod +x HIFI_search.py
+./HIFI_search.py -s "your search term"
 ```
 
 ## Output Format
@@ -54,4 +54,3 @@ Results are displayed grouped by marketplace with:
 
 - Python 3.7+
 - See `requirements.txt` for package dependencies
-

@@ -11,12 +11,15 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import re
 
-from blocket import BlocketScraper
-from tradera import TraderaScraper
-from facebook import FacebookScraper
-from hifitorget import HifiTorgetScraper
-from hifishark import HiFiSharkScraper
+from Scrapers import (
+    BlocketScraper,
+    TraderaScraper,
+    FacebookScraper,
+    HifiTorgetScraper,
+    HiFiSharkScraper,
+)
 from base import ListingResult
+from utils import normalize_date
 
 
 class AudioSearch:
@@ -333,13 +336,22 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
         scraper_name, listing = item
 
         if sort_by == 'date':
-            # Sort by date (newest first)
-            if not listing.posted_date:
-                return (0, datetime.min)
-            parsed_date = parse_date(listing.posted_date)
-            if parsed_date is None:
-                return (0, datetime.min)
-            return (0, parsed_date)
+            parsed_date = parse_date(listing.posted_date) if listing.posted_date else None
+            if parsed_date:
+                try:
+                    date_key = -parsed_date.timestamp()  # negative for newest-first when sorting ascending
+                except OSError:
+                    date_key = float('-inf')
+            else:
+                date_key = float('inf')  # push undated items last
+
+            source_name = scraper_name
+            if scraper_name == "HiFiShark" and listing.raw_data:
+                source_site = listing.raw_data.get('source_site')
+                if source_site:
+                    source_name = source_site
+
+            return (0, date_key, source_name.lower())
 
         elif sort_by == 'site':
             # Sort by site name (alphabetical)
@@ -356,14 +368,14 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
                 return (2, float('inf'))
 
     # Sort with appropriate reverse flag
-    if sort_by == 'date':
-        all_listings.sort(key=get_sort_key, reverse=True)  # Newest first
-    else:
-        all_listings.sort(key=get_sort_key)  # Alphabetical or price ascending
+    all_listings.sort(key=get_sort_key)
 
     def sanitize(value: Optional[str]) -> str:
         if not value:
             return "-"
+        normalized = normalize_date(value)
+        if normalized:
+            return normalized
         return " ".join(value.split())
 
     def truncate(value: str, max_width: int) -> str:
