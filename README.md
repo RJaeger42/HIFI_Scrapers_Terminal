@@ -62,3 +62,4 @@ Results are displayed grouped by marketplace with:
 ## Search Options
 
 - Focused searches now include synonyms (e.g., `amp` also searches `amplifier`/`förstärkare`)
+- Use `--debug` to turn on verbose scraper logging (off by default)

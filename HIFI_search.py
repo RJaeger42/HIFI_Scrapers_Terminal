@@ -6,7 +6,10 @@ Searches across multiple marketplaces: Blocket, Tradera, Facebook, HiFiShark, Hi
 
 import argparse
 import asyncio
+import itertools
+import threading
 import sys
+import time
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import re
@@ -33,10 +36,35 @@ from utils import normalize_date
 from search_utils import expand_search_term
 
 
+class Spinner:
+    """Simple terminal spinner for waiting feedback."""
+
+    def __init__(self, message: str):
+        self.message = message
+        self._stop_event = threading.Event()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+
+    def _spin(self):
+        for ch in itertools.cycle("|/-\\"):
+            if self._stop_event.is_set():
+                break
+            print(f"\r{self.message} {ch}", end="", flush=True)
+            time.sleep(0.12)
+        print("\r" + " " * (len(self.message) + 2) + "\r", end="", flush=True)
+
+    def start(self):
+        self._thread.start()
+
+    def stop(self):
+        self._stop_event.set()
+        self._thread.join()
+
+
 class AudioSearch:
     """Main orchestrator for running multiple scrapers"""
 
-    def __init__(self, include_sites: Optional[List[str]] = None, exclude_sites: Optional[List[str]] = None):
+    def __init__(self, include_sites: Optional[List[str]] = None, exclude_sites: Optional[List[str]] = None,
+                 debug: bool = False):
         # All available scrapers
         all_scrapers = {
             'Blocket': BlocketScraper(),
@@ -96,6 +124,13 @@ class AudioSearch:
             self.scrapers = list(all_scrapers.values())
 
         self.browser_scrapers = [FacebookScraper, TraderaScraper, BlocketScraper, HiFiSharkScraper]
+        self.debug = debug
+
+    def _log_debug(self, message: str):
+        if not self.debug:
+            return
+        from colors import info
+        print(f"{info('DEBUG:')} {message}", file=sys.stderr)
 
     async def search_all(self, query: str) -> Dict[str, List[ListingResult]]:
         """Search all enabled scrapers for a given query"""
@@ -106,24 +141,23 @@ class AudioSearch:
             print(f"{warning('Warning:')} Empty search query provided", file=sys.stderr)
             return results
 
-        from colors import info
-        print(f"\n{info('DEBUG:')} Starting search for query: '{query}'", file=sys.stderr)
-        print(f"{info('DEBUG:')} Enabled scrapers: {[s.name for s in self.scrapers]}", file=sys.stderr)
+        self._log_debug(f"Starting search for query: '{query}'")
+        self._log_debug(f"Enabled scrapers: {[s.name for s in self.scrapers]}")
 
         # Create tasks for all enabled scrapers
         tasks = []
         for scraper in self.scrapers:
-            print(f"{info('DEBUG:')} Creating search task for {scraper.name}", file=sys.stderr)
+            self._log_debug(f"Creating search task for {scraper.name}")
             task = asyncio.create_task(self._search_scraper(scraper, query.strip()))
             tasks.append((scraper.name, task))
 
         # Wait for all tasks to complete with timeout
         for name, task in tasks:
             try:
-                print(f"{info('DEBUG:')} Waiting for {name} results...", file=sys.stderr)
+                self._log_debug(f"Waiting for {name} results...")
                 scraper_results = await asyncio.wait_for(task, timeout=60.0)
                 results[name] = scraper_results
-                print(f"{info('DEBUG:')} {name} returned {len(scraper_results)} results", file=sys.stderr)
+                self._log_debug(f"{name} returned {len(scraper_results)} results")
             except asyncio.TimeoutError:
                 from colors import warning
                 print(f"{warning(f'Timeout:')} {name} search timed out after 60 seconds", file=sys.stderr)
@@ -597,6 +631,13 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     )
 
     parser.add_argument(
+        '--debug',
+        action='store_true',
+        dest='debug',
+        help='Show debug output for each scraper (default: off)'
+    )
+
+    parser.add_argument(
         '--sort',
         type=str,
         dest='sort_by',
@@ -615,16 +656,17 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     if not args.search_terms:
         parser.error("At least one search term (-s) is required")
 
-    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites)
+    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites, debug=args.debug)
 
     try:
         # Process each search term
         for search_term in args.search_terms:
+            spinner = Spinner("Searching")
+            spinner.start()
             try:
                 variants = expand_search_term(search_term)
                 if len(variants) > 1:
-                    from colors import info
-                    print(f"{info('DEBUG:')} Expanding '{search_term}' to synonyms {variants}", file=sys.stderr)
+                    searcher._log_debug(f"Expanding '{search_term}' to synonyms {variants}")
 
                 aggregated_results = {}
                 seen_signatures = set()
@@ -647,6 +689,8 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                 from colors import error
                 print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)
                 continue
+            finally:
+                spinner.stop()
     
     except KeyboardInterrupt:
         from colors import error
