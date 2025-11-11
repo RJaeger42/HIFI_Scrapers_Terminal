@@ -37,23 +37,39 @@ from search_utils import expand_search_term
 
 
 class Spinner:
-    """Simple terminal spinner for waiting feedback."""
+    """Simple terminal spinner that keeps one line per tracked label."""
 
-    def __init__(self, message: str):
-        self.message = message
+    def __init__(self):
         self._stop_event = threading.Event()
+        self._lock = threading.Lock()
+        self._labels: Dict[str, str] = {}
         self._thread = threading.Thread(target=self._spin, daemon=True)
 
-    def _spin(self):
-        for ch in itertools.cycle("|/-\\"):
-            if self._stop_event.is_set():
-                break
-            print(f"\r{self.message} {ch}", end="", flush=True)
-            time.sleep(0.12)
-        print("\r" + " " * (len(self.message) + 2) + "\r", end="", flush=True)
-
     def start(self):
-        self._thread.start()
+        if not self._thread.is_alive():
+            self._thread.start()
+
+    def _spin(self):
+        frames = "|/-\\"
+        idx = 0
+        while not self._stop_event.is_set():
+            lines = []
+            with self._lock:
+                for label, state in self._labels.items():
+                    lines.append(f"{frames[idx % len(frames)]} {label}: {state}")
+            display = "\n".join(lines)
+            print(f"\r{display}", end="", flush=True)
+            idx += 1
+            time.sleep(0.15)
+        print("\r" + " " * 80 + "\r", end="", flush=True)
+
+    def update(self, label: str, state: str):
+        with self._lock:
+            self._labels[label] = state
+
+    def complete(self, label: str):
+        with self._lock:
+            self._labels.pop(label, None)
 
     def stop(self):
         self._stop_event.set()
@@ -64,7 +80,7 @@ class AudioSearch:
     """Main orchestrator for running multiple scrapers"""
 
     def __init__(self, include_sites: Optional[List[str]] = None, exclude_sites: Optional[List[str]] = None,
-                 debug: bool = False):
+                 debug: bool = False, spinner: Optional[Spinner] = None):
         # All available scrapers
         all_scrapers = {
             'Blocket': BlocketScraper(),
@@ -125,6 +141,7 @@ class AudioSearch:
 
         self.browser_scrapers = [FacebookScraper, TraderaScraper, BlocketScraper, HiFiSharkScraper]
         self.debug = debug
+        self.spinner = spinner
 
     def _log_debug(self, message: str):
         if not self.debug:
@@ -148,6 +165,8 @@ class AudioSearch:
         tasks = []
         for scraper in self.scrapers:
             self._log_debug(f"Creating search task for {scraper.name}")
+            if self.spinner:
+                self.spinner.update(scraper.name, "running")
             task = asyncio.create_task(self._search_scraper(scraper, query.strip()))
             tasks.append((scraper.name, task))
 
@@ -169,6 +188,9 @@ class AudioSearch:
                 import traceback
                 traceback.print_exc()
                 results[name] = []
+            finally:
+                if self.spinner:
+                    self.spinner.complete(name)
 
         return results
     
@@ -656,13 +678,13 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     if not args.search_terms:
         parser.error("At least one search term (-s) is required")
 
-    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites, debug=args.debug)
+    spinner = Spinner()
+    spinner.start()
+    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites, debug=args.debug, spinner=spinner)
 
     try:
         # Process each search term
         for search_term in args.search_terms:
-            spinner = Spinner("Searching")
-            spinner.start()
             try:
                 variants = expand_search_term(search_term)
                 if len(variants) > 1:
@@ -689,8 +711,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                 from colors import error
                 print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)
                 continue
-            finally:
-                spinner.stop()
+        spinner.stop()
     
     except KeyboardInterrupt:
         from colors import error
