@@ -6,6 +6,7 @@ from playwright.async_api import async_playwright, Browser, TimeoutError as Play
 import re
 from urllib.parse import quote_plus
 import sys
+from debug_utils import debug_print
 
 
 class HifiTorgetScraper(BaseScraper):
@@ -45,7 +46,7 @@ class HifiTorgetScraper(BaseScraper):
         """Search HifiTorget for listings using Playwright"""
         results = []
 
-        print(f"{info('DEBUG HifiTorget:')} Starting search for '{query}'", file=sys.stderr)
+        debug_print(f"{self.name}: Starting search for '{query}'", info)
 
         browser = await self._get_browser()
         page = await browser.new_page()
@@ -64,7 +65,7 @@ class HifiTorgetScraper(BaseScraper):
             search_url = None
 
             for url in url_patterns:
-                print(f"{info('DEBUG HifiTorget:')} Trying URL: {url}", file=sys.stderr)
+                debug_print(f"{self.name}: Trying URL: {url}", info)
                 try:
                     response = await page.goto(url, wait_until='domcontentloaded', timeout=30000)
 
@@ -72,40 +73,36 @@ class HifiTorgetScraper(BaseScraper):
                         # Best-effort wait for quieter network to let dynamic content settle
                         await page.wait_for_load_state('networkidle', timeout=5000)
                     except PlaywrightTimeoutError:
-                        print(f"{warning('DEBUG HifiTorget:')} networkidle state not reached for {url} within 5s, continuing with current content", file=sys.stderr)
+                        debug_print(f"{self.name}: networkidle state not reached for {url} within 5s, continuing with current content", warning)
 
                     status = response.status if response else 'unknown'
-                    print(f"{info('DEBUG HifiTorget:')} Response status: {status}", file=sys.stderr)
+                    debug_print(f"{self.name}: Response status: {status}", info)
 
                     # If we get 200 (success) or 304 (not modified), use this URL
                     if response and response.status in [200, 304]:
                         search_url = url
-                        print(f"{info('DEBUG HifiTorget:')} Success! Using URL: {url}", file=sys.stderr)
+                        debug_print(f"{self.name}: Success! Using URL: {url}", info)
                         break
                 except PlaywrightTimeoutError as e:
-                    print(f"{warning('DEBUG HifiTorget:')} Timeout waiting for {url}: {e}", file=sys.stderr)
+                    debug_print(f"{self.name}: Timeout waiting for {url}: {e}", warning)
                     continue
                 except Exception as e:
-                    print(f"{warning('DEBUG HifiTorget:')} Failed with {url}: {e}", file=sys.stderr)
+                    debug_print(f"{self.name}: Failed with {url}: {e}", warning)
                     continue
 
             if not search_url or not response or response.status not in [200, 304]:
-                print(f"{error('DEBUG HifiTorget:')} All URL patterns failed", file=sys.stderr)
+                debug_print(f"{self.name}: All URL patterns failed", error)
                 return results
 
-            print(f"{info('DEBUG HifiTorget:')} Page loaded successfully", file=sys.stderr)
+            debug_print(f"{self.name}: Page loaded successfully", info)
 
             # Wait a bit for JavaScript to render
             await page.wait_for_timeout(3000)
 
             # Get the page content
             html_content = await page.content()
-            print(f"{info('DEBUG HifiTorget:')} Page content length: {len(html_content)} chars", file=sys.stderr)
-
-            # Debug: Print first 2000 chars of HTML
-            print(f"{info('DEBUG HifiTorget:')} HTML preview (first 2000 chars):", file=sys.stderr)
-            print(html_content[:2000], file=sys.stderr)
-            print(f"{info('DEBUG HifiTorget:')} --- End HTML preview ---", file=sys.stderr)
+            debug_print(f"{self.name}: Page content length: {len(html_content)} chars", info)
+            debug_print(f"{self.name}: HTML preview (first 2000 chars):\n{html_content[:2000]}\n--- End HTML preview ---", info)
 
             # Parse with BeautifulSoup
             soup = BeautifulSoup(html_content, 'html.parser')
@@ -113,17 +110,17 @@ class HifiTorgetScraper(BaseScraper):
             # Try multiple selector strategies for finding listings
             listings = self._find_listings(soup)
 
-            print(f"{info('DEBUG HifiTorget:')} Found {len(listings)} potential listing elements", file=sys.stderr)
+            debug_print(f"{self.name}: Found {len(listings)} potential listing elements", info)
 
             for idx, listing in enumerate(listings, 1):
                 try:
-                    print(f"{info('DEBUG HifiTorget:')} Parsing listing {idx}/{len(listings)}", file=sys.stderr)
+                    debug_print(f"{self.name}: Parsing listing {idx}/{len(listings)}", info)
                     listing_data = self._parse_listing(listing)
                     if listing_data:
-                        print(f"{info('DEBUG HifiTorget:')} Successfully parsed: {listing_data.title[:50]}...", file=sys.stderr)
+                        debug_print(f"{self.name}: Successfully parsed: {listing_data.title[:50]}...", info)
                         results.append(listing_data)
                     else:
-                        print(f"{warning('DEBUG HifiTorget:')} Listing {idx} returned no data", file=sys.stderr)
+                        debug_print(f"{self.name}: Listing {idx} returned no data", warning)
                 except Exception as e:
                     print(f"{error('Error parsing HifiTorget listing:')} {e}", file=sys.stderr)
                     import traceback
@@ -137,17 +134,14 @@ class HifiTorgetScraper(BaseScraper):
         finally:
             await page.close()
 
-        print(f"{info('DEBUG HifiTorget:')} Returning {len(results)} valid results", file=sys.stderr)
+        debug_print(f"{self.name}: Returning {len(results)} valid results", info)
         return results
     
     def _find_listings(self, soup: BeautifulSoup) -> List:
         """Find listing elements using multiple strategies"""
-        from colors import info, warning
-        import sys
-
         listings = []
 
-        print(f"{info('DEBUG HifiTorget:')} Strategy 1 - Looking for common listing containers", file=sys.stderr)
+        debug_print(f"{self.name}: Strategy 1 - Looking for common listing containers", info)
 
         # Strategy 1: Look for HifiTorget-specific card containers
         # Based on actual HTML: <div class="card mb-3" style="max-width: 840px; border-color: #ffffff">
@@ -162,37 +156,37 @@ class HifiTorgetScraper(BaseScraper):
         for tag, attrs in selectors:
             found = soup.find_all(tag, attrs)
             if found:
-                print(f"{info('DEBUG HifiTorget:')} Found {len(found)} elements with selector: {tag} {attrs}", file=sys.stderr)
+                debug_print(f"{self.name}: Found {len(found)} elements with selector: {tag} {attrs}", info)
                 listings.extend(found)
                 break
             else:
-                print(f"{info('DEBUG HifiTorget:')} No matches for selector: {tag} {attrs}", file=sys.stderr)
+                debug_print(f"{self.name}: No matches for selector: {tag} {attrs}", info)
 
         # Strategy 2: Look for links that contain listing patterns in href
         if not listings:
-            print(f"{info('DEBUG HifiTorget:')} Strategy 2 - Looking for listing links", file=sys.stderr)
+            debug_print(f"{self.name}: Strategy 2 - Looking for listing links", info)
             listing_links = soup.find_all('a', href=re.compile(r'/annons|/produkt|/item|/listing', re.I))
-            print(f"{info('DEBUG HifiTorget:')} Found {len(listing_links)} listing links", file=sys.stderr)
+            debug_print(f"{self.name}: Found {len(listing_links)} listing links", info)
             for link in listing_links:
                 # Find parent container
                 parent = link.find_parent(['article', 'div', 'li'])
                 if parent and parent not in listings:
                     listings.append(parent)
-            print(f"{info('DEBUG HifiTorget:')} Extracted {len(listings)} unique parent containers", file=sys.stderr)
+            debug_print(f"{self.name}: Extracted {len(listings)} unique parent containers", info)
 
         # Strategy 3: Generic fallback - look for elements with price indicators
         if not listings:
-            print(f"{info('DEBUG HifiTorget:')} Strategy 3 - Looking for price indicators", file=sys.stderr)
+            debug_print(f"{self.name}: Strategy 3 - Looking for price indicators", info)
             price_elements = soup.find_all(string=re.compile(r'\d+\s*kr', re.I))
-            print(f"{info('DEBUG HifiTorget:')} Found {len(price_elements)} price indicators", file=sys.stderr)
+            debug_print(f"{self.name}: Found {len(price_elements)} price indicators", info)
             for price_elem in price_elements:
                 parent = price_elem.find_parent(['article', 'div', 'li', 'a'])
                 if parent and parent not in listings:
                     listings.append(parent)
-            print(f"{info('DEBUG HifiTorget:')} Extracted {len(listings)} unique elements with prices", file=sys.stderr)
+            debug_print(f"{self.name}: Extracted {len(listings)} unique elements with prices", info)
 
         result_count = min(len(listings), 50)
-        print(f"{info('DEBUG HifiTorget:')} Returning {result_count} listings (limited from {len(listings)} found)", file=sys.stderr)
+        debug_print(f"{self.name}: Returning {result_count} listings (limited from {len(listings)} found)", info)
         return listings[:50]  # Limit to first 50 to avoid duplicates
     
     def _parse_listing(self, listing_element) -> Optional[ListingResult]:
@@ -389,5 +383,5 @@ class HifiTorgetScraper(BaseScraper):
                 cleaned = re.sub(r'Inlagd[:\s]*', '', text, flags=re.I).strip()
                 return cleaned or None
         except Exception as e:
-            print(f"{warning('DEBUG HifiTorget:')} Failed to fetch detail page for date: {e}", file=sys.stderr)
+            debug_print(f"{self.name}: Failed to fetch detail page for date: {e}", warning)
         return None

@@ -5,6 +5,7 @@ from colors import error, info, warning, success
 from datetime import datetime
 import re
 import sys
+from debug_utils import debug_print
 
 
 class HiFiSharkScraper(BaseScraper):
@@ -63,7 +64,7 @@ class HiFiSharkScraper(BaseScraper):
 
                 full_url = f"{search_url}?{'&'.join(params)}"
 
-                print(f"{info(f'DEBUG {self.name}:')} Navigating to {full_url}", file=sys.stderr)
+                debug_print(f"{self.name}: Navigating to {full_url}", info)
 
                 # Navigate and wait for network to be idle
                 await page.goto(full_url, wait_until='networkidle', timeout=60000)
@@ -101,7 +102,7 @@ class HiFiSharkScraper(BaseScraper):
                 hits = search_data.get('hits', [])
                 total = search_data.get('total', 0)
 
-                print(f"{info(f'DEBUG {self.name}:')} Found {len(hits)} results (total: {total}), filtering for Sweden...", file=sys.stderr)
+                debug_print(f"{self.name}: Found {len(hits)} results (total: {total}), filtering for Sweden...", info)
 
                 if total > len(hits):
                     if not search_info:
@@ -110,7 +111,7 @@ class HiFiSharkScraper(BaseScraper):
                         extra_hits = await self._fetch_additional_hits(page, search_info, len(hits), total)
                         if extra_hits:
                             hits.extend(extra_hits)
-                            print(f"{info(f'DEBUG {self.name}:')} Retrieved {len(hits)}/{total} hits after pagination", file=sys.stderr)
+                            debug_print(f"{self.name}: Retrieved {len(hits)}/{total} hits after pagination", info)
                         else:
                             print(f"{warning(f'{self.name}:')} Pagination request returned no extra hits", file=sys.stderr)
 
@@ -124,7 +125,7 @@ class HiFiSharkScraper(BaseScraper):
                         print(f"{warning(f'{self.name} parse error:')} {e}", file=sys.stderr)
                         continue
 
-                print(f"{success(f'{self.name}:')} Successfully parsed {len(results)} listings", file=sys.stderr)
+                debug_print(f"{self.name}: Successfully parsed {len(results)} listings", success)
 
             finally:
                 await page.close()
@@ -143,7 +144,7 @@ class HiFiSharkScraper(BaseScraper):
 
         while offset < total_hits:
             try:
-                print(f"{info(f'DEBUG {self.name}:')} Loading more hits ({offset}/{total_hits})", file=sys.stderr)
+                debug_print(f"{self.name}: Loading more hits ({offset}/{total_hits})", info)
                 payload = {
                     "info": search_info,
                     "offset": offset,

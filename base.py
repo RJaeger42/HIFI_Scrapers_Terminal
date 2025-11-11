@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import time
 import requests
 from bs4 import BeautifulSoup
-from colors import error
+from colors import error, info, warning
+from debug_utils import debug_print
 import sys
 
 
@@ -60,19 +61,19 @@ class BaseScraper(ABC):
         for attempt in range(retries):
             try:
                 self._rate_limit()
-                print(f"{info(f'DEBUG {self.name}:')} Attempt {attempt + 1}/{retries} - GET {url}", file=sys.stderr)
+                debug_print(f"{self.name}: Attempt {attempt + 1}/{retries} - GET {url}", info)
                 response = self.session.get(url, timeout=request_timeout)
-                print(f"{info(f'DEBUG {self.name}:')} Response status: {response.status_code}", file=sys.stderr)
+                debug_print(f"{self.name}: Response status: {response.status_code}", info)
                 response.raise_for_status()
                 return BeautifulSoup(response.content, 'html.parser')
             except requests.exceptions.Timeout as e:
                 if attempt == retries - 1:
                     print(f"{error(f'Error fetching {url} after {retries} attempts:')} Timeout - {e}", file=sys.stderr)
                     return None
-                print(f"{warning(f'DEBUG {self.name}:')} Timeout on attempt {attempt + 1}, retrying...", file=sys.stderr)
+                debug_print(f"{self.name}: Timeout on attempt {attempt + 1}, retrying...", warning)
                 time.sleep(retry_delay * (attempt + 1))
             except requests.exceptions.HTTPError as e:
-                print(f"{warning(f'DEBUG {self.name}:')} HTTP Error {e.response.status_code}: {e}", file=sys.stderr)
+                debug_print(f"{self.name}: HTTP Error {e.response.status_code}: {e}", warning)
                 if attempt == retries - 1:
                     # Don't log 410 Gone as errors (site may have changed structure)
                     if e.response.status_code == 410:
@@ -84,7 +85,7 @@ class BaseScraper(ABC):
                 if attempt == retries - 1:
                     print(f"{error(f'Error fetching {url} after {retries} attempts:')} {e}", file=sys.stderr)
                     return None
-                print(f"{warning(f'DEBUG {self.name}:')} Request error on attempt {attempt + 1}: {e}, retrying...", file=sys.stderr)
+                debug_print(f"{self.name}: Request error on attempt {attempt + 1}: {e}, retrying...", warning)
                 time.sleep(retry_delay * (attempt + 1))
 
         return None
@@ -136,4 +137,3 @@ class BaseScraper(ABC):
             return f"{self.base_url}{url}"
         else:
             return f"{self.base_url}/{url}"
-

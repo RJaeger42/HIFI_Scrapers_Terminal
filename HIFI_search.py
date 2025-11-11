@@ -6,10 +6,7 @@ Searches across multiple marketplaces: Blocket, Tradera, Facebook, HiFiShark, Hi
 
 import argparse
 import asyncio
-import itertools
-import threading
 import sys
-import time
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import re
@@ -34,53 +31,13 @@ from Scrapers import (
 from base import ListingResult
 from utils import normalize_date
 from search_utils import expand_search_term
-
-
-class Spinner:
-    """Simple terminal spinner that keeps one line per tracked label."""
-
-    def __init__(self):
-        self._stop_event = threading.Event()
-        self._lock = threading.Lock()
-        self._labels: Dict[str, str] = {}
-        self._thread = threading.Thread(target=self._spin, daemon=True)
-
-    def start(self):
-        if not self._thread.is_alive():
-            self._thread.start()
-
-    def _spin(self):
-        frames = "|/-\\"
-        idx = 0
-        while not self._stop_event.is_set():
-            lines = []
-            with self._lock:
-                for label, state in self._labels.items():
-                    lines.append(f"{frames[idx % len(frames)]} {label}: {state}")
-            display = "\n".join(lines)
-            print(f"\r{display}", end="", flush=True)
-            idx += 1
-            time.sleep(0.15)
-        print("\r" + " " * 80 + "\r", end="", flush=True)
-
-    def update(self, label: str, state: str):
-        with self._lock:
-            self._labels[label] = state
-
-    def complete(self, label: str):
-        with self._lock:
-            self._labels.pop(label, None)
-
-    def stop(self):
-        self._stop_event.set()
-        self._thread.join()
+from debug_utils import set_debug, debug_print
 
 
 class AudioSearch:
     """Main orchestrator for running multiple scrapers"""
 
-    def __init__(self, include_sites: Optional[List[str]] = None, exclude_sites: Optional[List[str]] = None,
-                 debug: bool = False, spinner: Optional[Spinner] = None):
+    def __init__(self, include_sites: Optional[List[str]] = None, exclude_sites: Optional[List[str]] = None):
         # All available scrapers
         all_scrapers = {
             'Blocket': BlocketScraper(),
@@ -140,14 +97,9 @@ class AudioSearch:
             self.scrapers = list(all_scrapers.values())
 
         self.browser_scrapers = [FacebookScraper, TraderaScraper, BlocketScraper, HiFiSharkScraper]
-        self.debug = debug
-        self.spinner = spinner
 
     def _log_debug(self, message: str):
-        if not self.debug:
-            return
-        from colors import info
-        print(f"{info('DEBUG:')} {message}", file=sys.stderr)
+        debug_print(f"DEBUG: {message}")
 
     async def search_all(self, query: str) -> Dict[str, List[ListingResult]]:
         """Search all enabled scrapers for a given query"""
@@ -165,8 +117,6 @@ class AudioSearch:
         tasks = []
         for scraper in self.scrapers:
             self._log_debug(f"Creating search task for {scraper.name}")
-            if self.spinner:
-                self.spinner.update(scraper.name, "running")
             task = asyncio.create_task(self._search_scraper(scraper, query.strip()))
             tasks.append((scraper.name, task))
 
@@ -189,8 +139,7 @@ class AudioSearch:
                 traceback.print_exc()
                 results[name] = []
             finally:
-                if self.spinner:
-                    self.spinner.complete(name)
+                pass
 
         return results
     
@@ -678,9 +627,8 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     if not args.search_terms:
         parser.error("At least one search term (-s) is required")
 
-    spinner = Spinner()
-    spinner.start()
-    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites, debug=args.debug, spinner=spinner)
+    set_debug(args.debug)
+    searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites)
 
     try:
         # Process each search term
@@ -711,7 +659,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                 from colors import error
                 print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)
                 continue
-        spinner.stop()
+        pass
     
     except KeyboardInterrupt:
         from colors import error
