@@ -17,6 +17,16 @@ from Scrapers import (
     FacebookScraper,
     HifiTorgetScraper,
     HiFiSharkScraper,
+    ReferenceAudioScraper,
+    LjudmakarnScraper,
+    HiFiPunktenScraper,
+    RehifiScraper,
+    AudioPerformanceScraper,
+    HifiExperienceScraper,
+    AudioConceptScraper,
+    LassesHiFiScraper,
+    AkkelisAudioScraper,
+    HifiPulsScraper,
 )
 from base import ListingResult
 from utils import normalize_date
@@ -33,6 +43,16 @@ class AudioSearch:
             'Facebook Marketplace': FacebookScraper(),
             'HifiTorget': HifiTorgetScraper(),
             'HiFiShark': HiFiSharkScraper(),
+            'Reference Audio': ReferenceAudioScraper(),
+            'Ljudmakarn': LjudmakarnScraper(),
+            'HiFi-Punkten': HiFiPunktenScraper(),
+            'Rehifi': RehifiScraper(),
+            'AudioPerformance': AudioPerformanceScraper(),
+            'HiFi Experience': HifiExperienceScraper(),
+            'AudioConcept': AudioConceptScraper(),
+            'Lasses HiFi': LassesHiFiScraper(),
+            'Akkelis Audio': AkkelisAudioScraper(),
+            'HiFi Puls': HifiPulsScraper(),
         }
 
         def match_site_name(user_input: str, scraper_name: str) -> bool:
@@ -514,6 +534,16 @@ Available sites (case-insensitive):
   - Facebook          (Facebook Marketplace Stockholm)
   - HifiTorget        (Swedish HiFi marketplace)
   - HiFiShark         (International HiFi marketplace - Sweden only)
+  - Reference Audio   (Swedish retailer - Begagnat)
+  - Ljudmakarn        (Stockholm retailer - Fyndhörnan)
+  - HiFi-Punkten      (Retailer listings)
+  - Rehifi            (Refurbished HiFi)
+  - AudioPerformance  (Starweb storefront)
+  - HiFi Puls         (PrestaShop demo/begagnat)
+  - HiFi Experience   (WooCommerce storefront)
+  - AudioConcept      (WooCommerce demo/begagnat)
+  - Lasses HiFi       (Shopify collection)
+  - Akkelis Audio     (Fyndhörnan specials)
 
 Notes:
   - Results are sorted by posting date (newest first) across all marketplaces

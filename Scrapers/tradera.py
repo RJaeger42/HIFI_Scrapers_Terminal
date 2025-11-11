@@ -27,10 +27,24 @@ class TraderaScraper(BaseScraper):
                 raise
         return self.browser
 
+    def _matches_query(self, text: Optional[str], tokens: List[str], full_query: str) -> bool:
+        if not tokens:
+            return True
+        haystack = (text or "").lower()
+        if full_query and full_query in haystack:
+            return True
+        for token in tokens:
+            if not re.search(rf"\b{re.escape(token)}\b", haystack):
+                return False
+        return True
+
     async def search(self, query: str, min_price: Optional[float] = None,
                     max_price: Optional[float] = None, **kwargs) -> List[ListingResult]:
         """Search Tradera for auctions"""
         results = []
+        query = query or ""
+        query_tokens = [tok for tok in re.split(r"\s+", query.lower().strip()) if tok]
+        full_query = " ".join(query_tokens)
         
         # Build search URL - Tradera uses 'q' parameter, not 'query'
         search_url = f"{self.base_url}/search"
@@ -115,7 +129,11 @@ class TraderaScraper(BaseScraper):
         for listing in listings:
             try:
                 listing_data = self._parse_listing(listing)
-                if listing_data:
+                if listing_data and self._matches_query(listing_data.title, query_tokens, full_query):
+                    if min_price and listing_data.price and listing_data.price < min_price:
+                        continue
+                    if max_price and listing_data.price and listing_data.price > max_price:
+                        continue
                     results.append(listing_data)
             except Exception:
                 continue
@@ -306,4 +324,3 @@ class TraderaScraper(BaseScraper):
             # Suppress cleanup errors - they're harmless
             if "Event loop is closed" not in str(e) and "closed" not in str(e).lower():
                 print(f"{error(f'Error closing {self.name}:')} {e}", file=sys.stderr)
-

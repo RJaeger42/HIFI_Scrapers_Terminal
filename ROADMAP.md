@@ -146,18 +146,25 @@
 - [ ] Custom CSS for web UI
 
 #### 3.13 Additional web sites
-- [ ] https://www.referenceaudio.se/kategori/935/begagnat
-- [ ] https://www.rehifi.se/
-- [ ] https://www.hifipuls.se/114-demo-begagnat 
-- [ ] https://esoterisk-hifi.se/begagnad-inbyten/
-- [ ] https://www.ljudmakarn.se/kategori/107/fyndhornan
-- [ ] https://www.audioperformance.se/category/begagnad-hifi
-- [ ] https://www.akkelisaudio.com/fyndhornan/
-- [ ] https://www.hifiexperience.se/produktkategori/begagnad-hifi/
-- [ ] https://audioconcept.se/product-category/demo-och-begagnat/
-- [ ] https://www.hifi-punkten.se/kategori/1/produkter
-- [ ] https://lasseshifi.se/collections/erbjudande
-- [ ]   
+
+| Site | Stack & Structure | Proposed Strategy | Notes / Dependencies | Status |
+|------|-------------------|-------------------|----------------------|--------|
+| [Reference Audio](https://www.referenceaudio.se/kategori/935/begagnat) | Ashop storefront, fully server-rendered HTML with predictable product cards and `?page=` pagination | Reuse existing requests + BeautifulSoup stack. Implement paginator by following `?page=` links until no results, parse `.product` blocks for title, price, link, image, breadcrumb for location. | Requires maintaining session cookie automatically set by storefront. | Implemented |
+| [Rehifi](https://www.rehifi.se/) | Starweb (server-side rendered). Category pages expose full product data in markup, pagination via `?page=` params. | Requests + BeautifulSoup. Detect relevant category IDs by hitting search endpoint `?q=`. Parse `.product` grid, price spans, and availability text. | Respect `cache-control` by spacing requests (already handled by BaseScraper rate limiting). | Implemented |
+| [HiFiPuls Demo/Begagnat](https://www.hifipuls.se/114-demo-begagnat) | PrestaShop, product listing in HTML (cards with `<article>`). | Requests + BeautifulSoup. Follow `?p=` for pagination. Extract vendor-provided condition text, price block `.price`. | Need to decode `&nbsp;` separators and convert Swedish currency formatting. | Implemented |
+| [Esoterisk HiFi](https://esoterisk-hifi.se/begagnad-inbyten/) | WordPress + WooCommerce. Product list available in HTML and via `wp-json/wp/v2/product`. | Prefer HTML scraping to avoid auth; parse `.product` tiles. If site adds lazy loading, fallback to WP REST by calling `.../wp-json/wp/v2/product?per_page=50&status=publish&category=begagnad-inbyten`. | Use requests; no Playwright required. | Pending (site blocks public APIs) |
+| [Ljudmakarn Fyndhörnan](https://www.ljudmakarn.se/kategori/107/fyndhornan) | Same Ashop platform as Reference Audio. | Share parser utilities with Reference Audio (common CSS classes). Possibly factor reusable `AshopScraperMixin`. | Handle VAT-inclusive price text. | Implemented |
+| [AudioPerformance Begagnad HiFi](https://www.audioperformance.se/category/begagnad-hifi) | Starweb storefront (same as Rehifi). | Reuse Starweb parser helper to avoid duplication. | Need to include brand info from subtitle text. | Implemented |
+| [Akkelis Audio](https://www.akkelisaudio.com/fyndhornan/) | Custom/WordPress site with static list of cards; moderate page size. | Requests + BeautifulSoup. Parse `.product` cards, use `<span class="price">`. | Some prices denote “Såld”; filter those out. | Implemented |
+| [HiFi Experience](https://www.hifiexperience.se/produktkategori/begagnad-hifi/) | WooCommerce with infinite scroll (but initial page contains all products). | Requests + BeautifulSoup. If pagination occurs, rely on `?paged=` query parameter. | Titles often include condition; propagate to description. | Implemented (WooCommerce Store API) |
+| [Audio Concept Demo & Begagnat](https://audioconcept.se/product-category/demo-och-begagnat/) | WooCommerce, similar to HiFi Experience. | Same WooCommerce parser module. May need to fetch additional pages if `max_num_pages > 1`. | Contains SEK and EUR prices; convert to SEK when currency symbol detected. | Implemented (WooCommerce Store API) |
+| [HiFi-Punkten](https://www.hifi-punkten.se/kategori/1/produkter) | Ashop storefront. | Reuse Ashop parser module. | Some listings have multiple price tiers; take lowest shown. | Implemented |
+| [Lasses HiFi](https://lasseshifi.se/collections/erbjudande) | Shopify. Data accessible via `https://lasseshifi.se/collections/erbjudande/products.json?page=N`. | Use Shopify JSON endpoint via requests to avoid HTML parsing. Iterate `page` until response empty. | Prices returned in SEK; include `compare_at_price` delta in description when present. | Implemented |
+
+**Implementation Notes**
+- All sites can be handled with existing Requests + BeautifulSoup stack; Playwright/Scrapy are not required at this stage.
+- Create lightweight helper mixins for recurring platforms (Ashop, Starweb, WooCommerce) to avoid duplication.
+- Shopify JSON access requires no auth but respect rate limits (add short sleep between pages if needed).
 
 ---
 
@@ -302,4 +309,3 @@
 - Regular maintenance needed as websites update their structure
 - Performance scales with number of active scrapers and result size
 - Consider ethical guidelines (rate limiting, user agents, robots.txt)
-

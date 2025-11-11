@@ -10,6 +10,10 @@ Searches across:
 - **Facebook Marketplace** - Facebook marketplace (Stockholm region)
 - **HifiTorget** - Swedish hifi marketplace
 - **HiFiShark** - International HiFi equipment search engine (Sweden filter)
+- **Reference Audio**, **Ljudmakarn**, **HiFi-Punkten** - Swedish retailers (Ashop platform)
+- **Rehifi** and **AudioPerformance** - Refurbished HiFi (Starweb)
+- **HiFi Puls**, **Akkelis Audio**, **Lasses HiFi** - Demo/Fyndhörna retailers
+- **HiFi Experience** and **AudioConcept** - WooCommerce-based demo/begagnat catalogs
 
 ## Installation
 
