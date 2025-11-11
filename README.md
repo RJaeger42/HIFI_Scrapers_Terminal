@@ -58,3 +58,7 @@ Results are displayed grouped by marketplace with:
 
 - Python 3.7+
 - See `requirements.txt` for package dependencies
+
+## Search Options
+
+- Focused searches now include synonyms (e.g., `amp` also searches `amplifier`/`förstärkare`)

@@ -30,6 +30,7 @@ from Scrapers import (
 )
 from base import ListingResult
 from utils import normalize_date
+from search_utils import expand_search_term
 
 
 class AudioSearch:
@@ -620,13 +621,28 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         # Process each search term
         for search_term in args.search_terms:
             try:
-                results = await searcher.search_all(search_term)
-                
-                # Apply days filter if specified
-                if args.days_back:
-                    results = filter_by_days(results, args.days_back)
+                variants = expand_search_term(search_term)
+                if len(variants) > 1:
+                    from colors import info
+                    print(f"{info('DEBUG:')} Expanding '{search_term}' to synonyms {variants}", file=sys.stderr)
 
-                format_results(results, search_term, args.days_back, args.sort_by)
+                aggregated_results = {}
+                seen_signatures = set()
+                for variant in variants:
+                    results = await searcher.search_all(variant)
+                    for site, listings in results.items():
+                        bucket = aggregated_results.setdefault(site, [])
+                        for listing in listings:
+                            signature = listing.url or f"{listing.title}|{listing.price}|{listing.location}"
+                            if signature in seen_signatures:
+                                continue
+                            seen_signatures.add(signature)
+                            bucket.append(listing)
+
+                if args.days_back:
+                    aggregated_results = filter_by_days(aggregated_results, args.days_back)
+
+                format_results(aggregated_results, search_term, args.days_back, args.sort_by)
             except Exception as e:
                 from colors import error
                 print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)

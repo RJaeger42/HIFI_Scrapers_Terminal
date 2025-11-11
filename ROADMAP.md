@@ -3,7 +3,7 @@
 ## Project Overview
 **Audio Search** is a terminal-based multi-marketplace scraper for searching audio equipment across 5 different platforms (Blocket, Tradera, Facebook Marketplace, HifiTorget, and HiFiShark). Built with Python, async scrapers, and Playwright for dynamic content.
 
-**Current Status:** Core functionality working with recent enhancements for sorting and default site behavior.
+**Current Status:** Core functionality working with recent enhancements for sorting/output plus a Phase 3.13 expansion (Release 0.2) covering 10+ new retailers.
 
 ---
 
@@ -84,7 +84,7 @@
 - [ ] Saved search profiles (JSON config files)
 - [ ] Search alerts/notifications
 - [ ] Fuzzy matching for typo tolerance
-- [ ] Search term synonyms (e.g., "amp" → "amplifier")
+- [x] Search term synonyms (e.g., "amp" → "amplifier")
 
 #### 3.5 Database Integration
 - [ ] SQLite database for result caching
