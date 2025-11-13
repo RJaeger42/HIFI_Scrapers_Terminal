@@ -59,10 +59,24 @@ class AudioSearch:
 
         def match_site_name(user_input: str, scraper_name: str) -> bool:
             """Check if user input matches scraper name (case-insensitive, supports partial match)"""
-            user_lower = user_input.lower()
-            scraper_lower = scraper_name.lower()
-            # Exact match or partial match (e.g., "facebook" matches "Facebook Marketplace")
-            return user_lower == scraper_lower or user_lower in scraper_lower.split()
+            def normalize(value: str) -> str:
+                return re.sub(r"[^a-z0-9]", "", value.lower())
+
+            user_norm = normalize(user_input)
+            scraper_norm = normalize(scraper_name)
+            if not user_norm or not scraper_norm:
+                return False
+
+            if user_norm == scraper_norm:
+                return True
+
+            # Support matching against individual words (e.g., "facebook" for "Facebook Marketplace")
+            for part in scraper_name.split():
+                if user_norm == normalize(part):
+                    return True
+
+            # Fallback: allow substring matches on normalized names (e.g., "hifiexperience")
+            return user_norm in scraper_norm
 
         # Filter scrapers based on include/exclude options
         if include_sites:
