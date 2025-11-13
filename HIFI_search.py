@@ -7,6 +7,7 @@ Searches across multiple marketplaces: Blocket, Tradera, Facebook, HiFiShark, Hi
 import argparse
 import asyncio
 import sys
+from dataclasses import dataclass
 from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import re
@@ -32,6 +33,18 @@ from base import ListingResult
 from utils import normalize_date
 from search_utils import expand_search_term
 from debug_utils import set_debug, debug_print
+
+
+@dataclass
+class QuerySpec:
+    display: str
+    search_string: str
+    mode: str  # 'simple', 'exact', 'all'
+    terms: List[str]
+
+    @property
+    def normalized_terms(self) -> List[str]:
+        return [term.lower() for term in self.terms if term]
 
 
 class AudioSearch:
@@ -582,10 +595,11 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     parser.add_argument(
         '-s', '--search',
         action='append',
+        nargs='+',
         dest='search_terms',
         required=True,
         metavar='TERM',
-        help='Search term to look for (can be used multiple times for separate searches)'
+        help='Search term to look for. Quote the term for an exact phrase, or leave unquoted to require all words (can be used multiple times)'
     )
 
     parser.add_argument(
@@ -644,17 +658,64 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     set_debug(args.debug)
     searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites)
 
+    def build_query(tokens: List[str]) -> QuerySpec:
+        cleaned = [token.strip() for token in tokens if token.strip()]
+        if not cleaned:
+            raise ValueError("Empty search term provided")
+        if len(cleaned) == 1:
+            value = cleaned[0]
+            if " " in value:
+                return QuerySpec(display=f"\"{value}\"", search_string=value, mode="exact", terms=[value])
+            return QuerySpec(display=value, search_string=value, mode="simple", terms=[value])
+        joined = " ".join(cleaned)
+        return QuerySpec(display=joined, search_string=joined, mode="all", terms=cleaned)
+
+    def listing_matches_query(listing: ListingResult, query: QuerySpec) -> bool:
+        if query.mode == "simple":
+            return True
+        haystack = " ".join(
+            filter(
+                None,
+                [
+                    listing.title or "",
+                    listing.description or "",
+                    listing.location or "",
+                ],
+            )
+        ).lower()
+        if query.mode == "exact":
+            target = query.normalized_terms[0]
+            return target in haystack
+        if query.mode == "all":
+            return all(term in haystack for term in query.normalized_terms)
+        return True
+
+    def filter_results_for_query(results: Dict[str, List[ListingResult]], query: QuerySpec) -> Dict[str, List[ListingResult]]:
+        if query.mode == "simple":
+            return results
+        filtered: Dict[str, List[ListingResult]] = {}
+        for site, listings in results.items():
+            filtered[site] = [listing for listing in listings if listing_matches_query(listing, query)]
+        return filtered
+
     try:
         # Process each search term
-        for search_term in args.search_terms:
+        for term_tokens in args.search_terms:
             try:
-                variants = expand_search_term(search_term)
-                if len(variants) > 1:
-                    searcher._log_debug(f"Expanding '{search_term}' to synonyms {variants}")
+                query_spec = build_query(term_tokens)
+                variant_strings = (
+                    expand_search_term(query_spec.search_string)
+                    if query_spec.mode == "simple"
+                    else [query_spec.search_string]
+                )
+                if query_spec.mode == "simple" and len(variant_strings) > 1:
+                    searcher._log_debug(
+                        f"Expanding '{query_spec.search_string}' to synonyms {variant_strings}"
+                    )
 
                 aggregated_results = {}
                 seen_signatures = set()
-                for variant in variants:
+                for variant in variant_strings:
                     results = await searcher.search_all(variant)
                     for site, listings in results.items():
                         bucket = aggregated_results.setdefault(site, [])
@@ -665,13 +726,16 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                             seen_signatures.add(signature)
                             bucket.append(listing)
 
+                aggregated_results = filter_results_for_query(aggregated_results, query_spec)
+
                 if args.days_back:
                     aggregated_results = filter_by_days(aggregated_results, args.days_back)
 
-                format_results(aggregated_results, search_term, args.days_back, args.sort_by)
+                format_results(aggregated_results, query_spec.display, args.days_back, args.sort_by)
             except Exception as e:
                 from colors import error
-                print(f"{error(f'Error processing search term \"{search_term}\":')} {e}", file=sys.stderr)
+                display = " ".join(term_tokens)
+                print(f"{error(f'Error processing search term \"{display}\":')} {e}", file=sys.stderr)
                 continue
         pass
     
