@@ -54,7 +54,6 @@ class AudioSearch:
         # All available scrapers
         all_scrapers = {
             'Blocket': BlocketScraper(),
-            'Tradera': TraderaScraper(),
             'Facebook Marketplace': FacebookScraper(),
             'HifiTorget': HifiTorgetScraper(),
             'HiFiShark': HiFiSharkScraper(),
@@ -523,7 +522,6 @@ async def main():
 
 Search for audio equipment across multiple Swedish and international marketplaces:
   • Blocket.se (Swedish classifieds)
-  • Tradera.com (Swedish auctions)
   • Facebook Marketplace (Stockholm region)
   • HifiTorget.se (Swedish HiFi marketplace)
   • HiFiShark.com (International HiFi marketplace - Sweden filter)
@@ -544,12 +542,12 @@ Examples:
 
   Include only specific sites:
     %(prog)s -s "amplifier" -i Blocket                    # Only Blocket
-    %(prog)s -s "speakers" -i Blocket -i Tradera          # Only Blocket and Tradera
+    HIFI_search.py -s "speakers" -i Blocket          # Only Blocket
     %(prog)s -s "hegel" -i HifiTorget -d 7                # Only HifiTorget, last 7 days
 
   Exclude specific sites:
     %(prog)s -s "turntable" -e Facebook                   # All except Facebook
-    %(prog)s -s "receiver" -e Tradera -e Facebook         # All except Tradera and Facebook
+    HIFI_search.py -s "receiver" -e Facebook         # All except Facebook
     %(prog)s -s "amplifier" -e Blocket -d 3               # All except Blocket, last 3 days
 
   Multiple search terms (run separate searches):
@@ -563,7 +561,6 @@ Examples:
 
 Available sites (case-insensitive):
   - Blocket           (Swedish classifieds)
-  - Tradera           (Swedish auctions)
   - Facebook          (Facebook Marketplace Stockholm)
   - HifiTorget        (Swedish HiFi marketplace)
   - HiFiShark         (International HiFi marketplace - Sweden only)
@@ -617,7 +614,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         dest='include_sites',
         default=None,
         metavar='SITE',
-        help='Include only specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -i)'
+        help='Include only specific site(s). Can be: Blocket, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -i)'
     )
 
     parser.add_argument(
@@ -626,7 +623,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         dest='exclude_sites',
         default=None,
         metavar='SITE',
-        help='Exclude specific site(s). Can be: Blocket, Tradera, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -e)'
+        help='Exclude specific site(s). Can be: Blocket, Facebook, HifiTorget, HiFiShark (case-insensitive, can use multiple -e)'
     )
 
     parser.add_argument(
