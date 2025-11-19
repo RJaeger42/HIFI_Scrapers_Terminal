@@ -438,7 +438,7 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
         return value[:max_width - 1] + "…"
 
     column_specs = [
-        ("title", "Title", 48),
+        ("title", "Title", 44),
         ("date", "Date", 16),
         ("price", "Price", 14),
         ("location", "Location", 20),
