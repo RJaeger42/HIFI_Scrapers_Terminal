@@ -107,24 +107,36 @@ class HiFiSharkScraper(BaseScraper):
                     if not search_info:
                         print(f"{warning(f'{self.name}:')} Unable to fetch additional pages (missing searchInfo)", file=sys.stderr)
                     else:
+                        debug_print(f"{self.name}: Need pagination - fetching {total - len(hits)} more hits...", info)
                         extra_hits = await self._fetch_additional_hits(page, search_info, len(hits), total)
                         if extra_hits:
                             hits.extend(extra_hits)
                             debug_print(f"{self.name}: Retrieved {len(hits)}/{total} hits after pagination", info)
                         else:
-                            print(f"{warning(f'{self.name}:')} Pagination request returned no extra hits", file=sys.stderr)
+                            print(f"{warning(f'{self.name}:')} Pagination request returned no extra hits (expected {total - len(hits)} more)", file=sys.stderr)
+                else:
+                    debug_print(f"{self.name}: All {total} hits loaded in initial page (no pagination needed)", info)
 
                 # Process each hit
+                filtered_out = 0
+                parse_errors = 0
                 for hit in hits:
                     try:
                         listing = self._parse_hit(hit)
                         if listing:
                             results.append(listing)
+                        else:
+                            # Hit was filtered out (likely by country filter)
+                            filtered_out += 1
+                            location_data = hit.get('location', {})
+                            country_iso = location_data.get('country_iso', '').lower()
+                            debug_print(f"{self.name}: Filtered out hit with country_iso='{country_iso}'", warning)
                     except Exception as e:
+                        parse_errors += 1
                         print(f"{warning(f'{self.name} parse error:')} {e}", file=sys.stderr)
                         continue
 
-                debug_print(f"{self.name}: Successfully parsed {len(results)} listings", success)
+                debug_print(f"{self.name}: Successfully parsed {len(results)} listings (filtered out: {filtered_out}, errors: {parse_errors})", success)
 
             finally:
                 await page.close()
@@ -186,15 +198,21 @@ class HiFiSharkScraper(BaseScraper):
                     }
                 """, payload)
             except Exception as e:
-                print(f"{warning(f'{self.name}:')} Pagination request failed: {e}", file=sys.stderr)
+                print(f"{error(f'{self.name}:')} Pagination request failed at offset {offset}: {e}", file=sys.stderr)
+                break
+
+            # Check for HTTP error
+            if isinstance(response, dict) and 'error' in response:
+                print(f"{error(f'{self.name}:')} Pagination HTTP error at offset {offset}: {response['error']}", file=sys.stderr)
                 break
 
             if not response or 'hits' not in response:
-                print(f"{warning(f'{self.name}:')} Unexpected pagination response: {response}", file=sys.stderr)
+                print(f"{error(f'{self.name}:')} Unexpected pagination response at offset {offset}: {response}", file=sys.stderr)
                 break
 
             new_hits = response.get('hits', [])
             if not new_hits:
+                debug_print(f"{self.name}: No more hits returned at offset {offset} (expected {total_hits - offset} more)", warning)
                 break
 
             extra_hits.extend(new_hits)
