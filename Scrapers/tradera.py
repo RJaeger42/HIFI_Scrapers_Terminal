@@ -1,7 +1,7 @@
 from typing import List, Optional
 from bs4 import BeautifulSoup
 from base import BaseScraper, ListingResult
-from colors import error, info, warning, success
+from colors import error
 import re
 import sys
 from urllib.parse import quote_plus
@@ -78,7 +78,7 @@ class TraderaScraper(BaseScraper):
             await page.close()
             
             soup = BeautifulSoup(content, 'html.parser')
-        except Exception as e:
+        except Exception:
             soup = self._fetch_page(full_url)
         
         if not soup:

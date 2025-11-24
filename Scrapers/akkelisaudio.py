@@ -29,7 +29,7 @@ class AkkelisAudioScraper(BaseScraper):
             if not title_tag:
                 continue
             title = title_tag.get_text(strip=True)
-            if query_lower not in title.lower():
+            if not self._matches_word_boundary(title, query):
                 continue
 
             link = title_tag.get("href")

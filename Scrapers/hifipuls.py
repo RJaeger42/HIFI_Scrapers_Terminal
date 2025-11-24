@@ -74,8 +74,8 @@ class HifiPulsScraper(BaseScraper):
                 listing = self._parse_listing(node)
                 if not listing:
                     continue
-                haystack = f"{listing.title} {listing.description or ''}".lower()
-                if query_lower not in haystack:
+                haystack = f"{listing.title} {listing.description or ''}"
+                if not self._matches_word_boundary(haystack, query):
                     continue
                 if min_price and listing.price and listing.price < min_price:
                     continue

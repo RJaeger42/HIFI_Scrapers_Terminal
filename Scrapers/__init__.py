@@ -15,6 +15,8 @@ from .audioconcept import AudioConceptScraper
 from .lasseshifi import LassesHiFiScraper
 from .akkelisaudio import AkkelisAudioScraper
 from .hifipuls import HifiPulsScraper
+from .taktoton import TaktotonScraper
+from .perfectsense import PerfectSenseScraper
 
 __all__ = [
     "BlocketScraper",
@@ -32,4 +34,6 @@ __all__ = [
     "LassesHiFiScraper",
     "AkkelisAudioScraper",
     "HifiPulsScraper",
+    "TaktotonScraper",
+    "PerfectSenseScraper",
 ]

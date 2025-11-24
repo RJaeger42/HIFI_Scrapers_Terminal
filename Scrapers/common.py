@@ -6,7 +6,6 @@ from typing import List, Optional, Tuple, Dict, Any
 from bs4 import BeautifulSoup
 
 from base import BaseScraper, ListingResult
-from colors import warning
 
 
 class AshopCategoryScraper(BaseScraper):
@@ -46,8 +45,8 @@ class AshopCategoryScraper(BaseScraper):
                     product.get("product_info_puff"),
                 ],
             )
-        ).lower()
-        return query in haystack
+        )
+        return self._matches_word_boundary(haystack, query)
 
     def _product_to_listing(self, product: Dict[str, Any]) -> ListingResult:
         title = product.get("product_name") or product.get("product_title") or "Okänd produkt"
@@ -158,7 +157,6 @@ class StarwebSearchScraper(BaseScraper):
     def _search_sync(self, query: str, min_price: Optional[float], max_price: Optional[float]) -> List[ListingResult]:
         results: List[ListingResult] = []
         page = 1
-        query_lower = (query or "").lower()
         seen_urls = set()
 
         while True:
@@ -171,7 +169,7 @@ class StarwebSearchScraper(BaseScraper):
                 listing = self._parse_listing(li)
                 if not listing:
                     continue
-                if query_lower not in listing.title.lower():
+                if not self._matches_word_boundary(listing.title, query):
                     continue
                 if min_price and listing.price and listing.price < min_price:
                     continue
@@ -273,7 +271,6 @@ class ShopifyCollectionScraper(BaseScraper):
 
     def _search_sync(self, query: str, min_price: Optional[float], max_price: Optional[float]) -> List[ListingResult]:
         results: List[ListingResult] = []
-        query_lower = (query or "").lower()
         page = 1
 
         while True:
@@ -283,7 +280,7 @@ class ShopifyCollectionScraper(BaseScraper):
 
             for product in products:
                 title = product.get("title", "")
-                if query_lower not in title.lower():
+                if not self._matches_word_boundary(title, query):
                     continue
                 variants = product.get("variants") or []
                 price_value = None

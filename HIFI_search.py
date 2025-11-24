@@ -28,6 +28,8 @@ from Scrapers import (
     LassesHiFiScraper,
     AkkelisAudioScraper,
     HifiPulsScraper,
+    TaktotonScraper,
+    PerfectSenseScraper,
 )
 from base import ListingResult
 from utils import normalize_date
@@ -67,6 +69,8 @@ class AudioSearch:
             'Lasses HiFi': LassesHiFiScraper(),
             'Akkelis Audio': AkkelisAudioScraper(),
             'HiFi Puls': HifiPulsScraper(),
+            'Taktoton': TaktotonScraper(),
+            'Perfect Sense': PerfectSenseScraper(),
         }
 
         def match_site_name(user_input: str, scraper_name: str) -> bool:
@@ -155,7 +159,7 @@ class AudioSearch:
                 self._log_debug(f"{name} returned {len(scraper_results)} results")
             except asyncio.TimeoutError:
                 from colors import warning
-                print(f"{warning(f'Timeout:')} {name} search timed out after 60 seconds", file=sys.stderr)
+                print(f"{warning('Timeout:')} {name} search timed out after 60 seconds", file=sys.stderr)
                 results[name] = []
             except Exception as e:
                 from colors import error
@@ -198,7 +202,7 @@ class AudioSearch:
                     if hasattr(scraper, 'browser') and scraper.browser:
                         try:
                             await scraper.browser.close()
-                        except:
+                        except Exception:
                             pass
                 except Exception as e:
                     # Suppress cleanup warnings - they're harmless and happen during shutdown
@@ -359,7 +363,7 @@ def filter_by_days(results: Dict[str, List[ListingResult]], days_back: int) -> D
     return filtered_results
 
 
-def format_results(results: Dict[str, List[ListingResult]], search_term: str, days_filter: Optional[int] = None, sort_by: str = 'date'):
+def format_results(results: Dict[str, List[ListingResult]], search_term: str, days_filter: Optional[int] = None, sort_by: str = 'date', reverse: bool = False):
     """Format and print search results in a clean, readable format"""
     total_results = sum(len(r) for r in results.values())
 
@@ -419,8 +423,22 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
             except (TypeError, ValueError):
                 return (2, float('inf'))
 
+        elif sort_by == 'title':
+            # Sort by title (alphabetical, empty titles last)
+            title = (listing.title or "").strip().lower()
+            if not title:
+                return (3, 'zzzzzzzzz')  # push empty titles to end
+            return (3, title)
+
+        elif sort_by == 'location':
+            # Sort by location (alphabetical, empty locations last)
+            location = (listing.location or "").strip().lower()
+            if not location:
+                return (4, 'zzzzzzzzz')  # push empty locations to end
+            return (4, location)
+
     # Sort with appropriate reverse flag
-    all_listings.sort(key=get_sort_key)
+    all_listings.sort(key=get_sort_key, reverse=reverse)
 
     def sanitize(value: Optional[str]) -> str:
         if not value:
@@ -481,10 +499,16 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
         longest = max(len(value) for value in values)
         col_widths[key] = max(len(label), min(longest, cap))
 
-    # Print header row (Title first as requested)
+    # Print header row with sort indicators
     header_parts = []
+    sort_indicator = "↓" if not reverse else "↑"
     for key, label, _ in column_specs:
-        header_parts.append(f"{label:<{col_widths[key]}}")
+        # Add sort indicator to active column
+        if (sort_by == key) or (sort_by == 'site' and key == 'source'):
+            display_label = f"{label} {sort_indicator}"
+        else:
+            display_label = label
+        header_parts.append(f"{display_label:<{col_widths[key]}}")
     header_line = "  ".join(header_parts)
     print(header_line)
     print("-" * len(header_line))
@@ -512,6 +536,120 @@ def format_results(results: Dict[str, List[ListingResult]], search_term: str, da
     print(f"{'═'*80}\n")
 
 
+def interactive_sort_mode(results: Dict[str, List[ListingResult]], search_term: str, days_filter: Optional[int] = None):
+    """Interactive mode for re-sorting results without re-scraping"""
+    import os
+
+    current_sort = 'date'
+    current_reverse = False
+    filter_term = None
+    original_results = results
+    filtered_results = results
+
+    def clear_screen():
+        """Clear terminal screen"""
+        os.system('clear' if os.name != 'nt' else 'cls')
+
+    def apply_filter(results_dict: Dict[str, List[ListingResult]], term: str) -> Dict[str, List[ListingResult]]:
+        """Filter results by title and location (case-insensitive)"""
+        if not term:
+            return results_dict
+
+        term_lower = term.lower()
+        filtered = {}
+
+        for scraper_name, listings in results_dict.items():
+            matching = []
+            for listing in listings:
+                # Search in title
+                title_match = listing.title and term_lower in listing.title.lower()
+                # Search in location
+                location_match = listing.location and term_lower in listing.location.lower()
+
+                if title_match or location_match:
+                    matching.append(listing)
+
+            if matching:
+                filtered[scraper_name] = matching
+
+        return filtered
+
+    def show_menu():
+        """Display interactive menu"""
+        print("\n" + "─" * 80)
+        print("Interactive Sort Mode:")
+        print("  [1] Date    [2] Price    [3] Source    [4] Title    [5] Location")
+        print("  [S] Search/Filter    ", end="")
+        if filter_term:
+            print("[C] Clear filter    [R] Reverse    [Q] Quit")
+            print(f"  Active filter: '{filter_term}'")
+        else:
+            print("[R] Reverse    [Q] Quit")
+        print("─" * 80)
+
+    while True:
+        # Display results with current sort
+        clear_screen()
+
+        # Show filtered or original results
+        display_results = filtered_results if filter_term else original_results
+
+        # Update search term display if filtered
+        display_search = f"{search_term} (filtered: '{filter_term}')" if filter_term else search_term
+
+        format_results(display_results, display_search, days_filter, current_sort, current_reverse)
+        show_menu()
+
+        # Get user input
+        try:
+            choice = input("\nSelect option: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting interactive mode.")
+            break
+
+        if choice == 'q':
+            print("Exiting interactive mode.")
+            break
+        elif choice == '1':
+            current_sort = 'date'
+            current_reverse = False  # Reset reverse for new sort
+        elif choice == '2':
+            current_sort = 'price'
+            current_reverse = False
+        elif choice == '3':
+            current_sort = 'site'
+            current_reverse = False
+        elif choice == '4':
+            current_sort = 'title'
+            current_reverse = False
+        elif choice == '5':
+            current_sort = 'location'
+            current_reverse = False
+        elif choice == 'r':
+            current_reverse = not current_reverse
+        elif choice == 's':
+            # Get filter term from user
+            try:
+                new_filter = input("Enter search term (title/location): ").strip()
+                if new_filter:
+                    filter_term = new_filter
+                    filtered_results = apply_filter(original_results, filter_term)
+                else:
+                    # Empty term clears filter
+                    filter_term = None
+                    filtered_results = original_results
+            except (EOFError, KeyboardInterrupt):
+                # Cancelled, keep current filter
+                pass
+        elif choice == 'c' and filter_term:
+            # Clear filter
+            filter_term = None
+            filtered_results = original_results
+        else:
+            print("Invalid option. Press Enter to continue...")
+            input()
+
+
 async def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(
@@ -531,6 +669,11 @@ Results are displayed sorted by date (newest first) across all sources.
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
+  List all available sources:
+    %(prog)s --list-sources                                   # Show all sources (enabled/disabled)
+    %(prog)s --list-sources -i Blocket                        # Show sources (only Blocket enabled)
+    %(prog)s --list-sources -e Facebook                       # Show sources (all except Facebook)
+
   Basic search:
     %(prog)s -s "yamaha receiver"
     %(prog)s -s "hegel h90"
@@ -558,6 +701,18 @@ Examples:
     %(prog)s -s "amplifier" --sort date                # Sort by date (newest first) - default
     %(prog)s -s "speakers" --sort site                 # Sort by site name (alphabetical)
     %(prog)s -s "receiver" --sort price                # Sort by price (lowest first)
+    %(prog)s -s "speakers" --sort title                # Sort by title (A-Z)
+    %(prog)s -s "amplifier" --sort location            # Sort by location (A-Z)
+
+  Interactive mode (default after search):
+    After results are displayed, enter interactive mode to re-sort/filter without re-scraping:
+      [1] Date    [2] Price    [3] Source    [4] Title    [5] Location
+      [S] Search/Filter results (searches title and location)
+      [C] Clear filter (appears when filter is active)
+      [R] Reverse current sort    [Q] Quit interactive mode
+
+    Disable interactive mode:
+    %(prog)s -s "amplifier" --no-interactive           # Skip interactive mode
 
 Available sites (case-insensitive):
   - Blocket           (Swedish classifieds)
@@ -574,16 +729,21 @@ Available sites (case-insensitive):
   - AudioConcept      (WooCommerce demo/begagnat)
   - Lasses HiFi       (Shopify collection)
   - Akkelis Audio     (Fyndhörnan specials)
+  - Taktoton          (Magento 2 storefront - Begagnat)
+  - Perfect Sense     (WordPress custom - Demo/Inbyten)
 
 Notes:
-  - Results are sorted by posting date (newest first) across all marketplaces
-  - Listings without dates are shown at the end
+  - Results are sorted by posting date (newest first) by default
+  - After results display, interactive mode allows re-sorting and filtering without re-scraping
+  - Filter searches in title and location fields (case-insensitive)
+  - Use arrow indicators (↓/↑) in header to see current sort column and direction
+  - Listings without dates/prices/locations are shown at the end
   - Use -d/--days to filter recent listings only
   - Use -i/--include to search only specific sites (can use multiple -i)
   - Use -e/--exclude to skip specific sites (can use multiple -e)
   - Cannot use -i and -e together
   - URLs are clickable in most modern terminals
-  - Press Ctrl+C to cancel a running search
+  - Press Ctrl+C to cancel a running search or exit interactive mode
 
 For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Terminal
         """
@@ -594,7 +754,7 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         action='append',
         nargs='+',
         dest='search_terms',
-        required=True,
+        required=False,
         metavar='TERM',
         help='Search term to look for. Quote the term for an exact phrase, or leave unquoted to require all words (can be used multiple times)'
     )
@@ -638,9 +798,23 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
         type=str,
         dest='sort_by',
         default='date',
-        choices=['date', 'site', 'price'],
+        choices=['date', 'site', 'price', 'title', 'location'],
         metavar='FIELD',
-        help='Sort results by: date (newest first), site (alphabetical), or price (lowest first). Default: date'
+        help='Sort results by: date (newest first), site (alphabetical), price (lowest first), title (A-Z), or location (A-Z). Default: date'
+    )
+
+    parser.add_argument(
+        '--no-interactive',
+        action='store_true',
+        dest='no_interactive',
+        help='Disable interactive sort mode after results are displayed'
+    )
+
+    parser.add_argument(
+        '--list-sources',
+        action='store_true',
+        dest='list_sources',
+        help='Show all available sources with their enabled/disabled status and exit'
     )
 
     args = parser.parse_args()
@@ -648,7 +822,61 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
     # Validate that include and exclude are not used together
     if args.include_sites and args.exclude_sites:
         parser.error("Cannot use both --include and --exclude options together")
-    
+
+    # Handle --list-sources
+    if args.list_sources:
+        # Create searcher to get enabled/disabled status
+        searcher = AudioSearch(include_sites=args.include_sites, exclude_sites=args.exclude_sites)
+
+        # Get all available scrapers
+        all_scrapers = {
+            'Blocket': BlocketScraper,
+            'Facebook Marketplace': FacebookScraper,
+            'HifiTorget': HifiTorgetScraper,
+            'HiFiShark': HiFiSharkScraper,
+            'Reference Audio': ReferenceAudioScraper,
+            'Ljudmakarn': LjudmakarnScraper,
+            'HiFi-Punkten': HiFiPunktenScraper,
+            'Rehifi': RehifiScraper,
+            'AudioPerformance': AudioPerformanceScraper,
+            'HiFi Experience': HifiExperienceScraper,
+            'AudioConcept': AudioConceptScraper,
+            'Lasses HiFi': LassesHiFiScraper,
+            'Akkelis Audio': AkkelisAudioScraper,
+            'HiFi Puls': HifiPulsScraper,
+            'Taktoton': TaktotonScraper,
+            'Perfect Sense': PerfectSenseScraper,
+        }
+
+        enabled_names = [s.name for s in searcher.scrapers]
+
+        print("\n" + "═" * 80)
+        print("Available Sources")
+        print("═" * 80 + "\n")
+        print(f"{'Source':<30} {'Status':<15} {'Type':<20}")
+        print("-" * 80)
+
+        for name in sorted(all_scrapers.keys()):
+            status = "✓ Enabled" if name in enabled_names else "✗ Disabled"
+
+            # Determine type based on name
+            if 'marketplace' in name.lower() or name == 'Blocket':
+                scraper_type = "Marketplace"
+            elif 'shark' in name.lower():
+                scraper_type = "Aggregator"
+            else:
+                scraper_type = "Retailer"
+
+            print(f"{name:<30} {status:<15} {scraper_type:<20}")
+
+        print("\n" + "═" * 80)
+        enabled_count = len(enabled_names)
+        total_count = len(all_scrapers)
+        print(f"Total: {enabled_count}/{total_count} sources enabled")
+        print("═" * 80 + "\n")
+
+        sys.exit(0)
+
     if not args.search_terms:
         parser.error("At least one search term (-s) is required")
 
@@ -729,6 +957,10 @@ For more information, visit: https://github.com/yourusername/HIFI_Scrapers_Termi
                     aggregated_results = filter_by_days(aggregated_results, args.days_back)
 
                 format_results(aggregated_results, query_spec.display, args.days_back, args.sort_by)
+
+                # Enter interactive mode if results were found and interactive mode is enabled
+                if not args.no_interactive and sum(len(r) for r in aggregated_results.values()) > 0:
+                    interactive_sort_mode(aggregated_results, query_spec.display, args.days_back)
             except Exception as e:
                 from colors import error
                 display = " ".join(term_tokens)

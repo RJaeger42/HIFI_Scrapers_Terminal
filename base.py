@@ -50,7 +50,6 @@ class BaseScraper(ABC):
     
     def _fetch_page(self, url: str, retries: int = None) -> Optional[BeautifulSoup]:
         """Fetch and parse a webpage with retry logic"""
-        from colors import info, warning
 
         if retries is None:
             retries = 3  # Default max retries
@@ -114,7 +113,31 @@ class BaseScraper(ABC):
             return float(cleaned)
         except ValueError:
             return None
-    
+
+    def _matches_word_boundary(self, text: str, query: str) -> bool:
+        """
+        Check if query matches as whole word(s) in text (case-insensitive).
+        Uses word boundary matching to avoid partial matches.
+
+        Example: 'nad' matches 'NAD M12' but not 'begagnad'
+        """
+        import re
+
+        if not text or not query:
+            return False
+
+        haystack = text.lower()
+        query_lower = query.lower()
+
+        # Split query into tokens
+        tokens = query_lower.split()
+
+        # All tokens must match as word boundaries
+        for token in tokens:
+            if not re.search(rf"\b{re.escape(token)}\b", haystack):
+                return False
+        return True
+
     @abstractmethod
     async def search(self, query: str, **kwargs) -> List[ListingResult]:
         """

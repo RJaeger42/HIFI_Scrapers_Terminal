@@ -87,7 +87,7 @@ class HifiExperienceScraper(BaseScraper):
                 listing = self._parse_listing(node)
                 if not listing:
                     continue
-                if query_lower not in listing.title.lower():
+                if not self._matches_word_boundary(listing.title, query):
                     continue
                 if min_price and listing.price and listing.price < min_price:
                     continue

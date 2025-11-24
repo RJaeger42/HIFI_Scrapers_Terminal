@@ -1,7 +1,7 @@
 from typing import List, Optional
 from playwright.async_api import async_playwright, Browser, Page
 from base import BaseScraper, ListingResult
-from colors import error, info, warning, success
+from colors import error
 import re
 import sys
 
@@ -147,7 +147,7 @@ class FacebookScraper(BaseScraper):
                             if len(text) > 10 and len(text) < 200:
                                 title = text
                                 break
-                    except:
+                    except Exception:
                         continue
             
             # Strategy 4: Get all text and use first meaningful line (skip prices)
@@ -184,7 +184,7 @@ class FacebookScraper(BaseScraper):
                             price = self._extract_price(price_text)
                             if price and price > 0:
                                 break
-                except:
+                except Exception:
                     continue
             
             # Strategy 2: Look for price patterns in all text (more careful)
@@ -221,7 +221,7 @@ class FacebookScraper(BaseScraper):
                         if city_pattern.search(listing_text):
                             location = city
                             break
-            except:
+            except Exception:
                 pass
             
             # Description
@@ -256,7 +256,7 @@ class FacebookScraper(BaseScraper):
                             posted_date = date_attr
                         else:
                             posted_date = await time_elem.inner_text()
-            except:
+            except Exception:
                 pass
             
             raw_data = {

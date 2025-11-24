@@ -3,7 +3,6 @@ from playwright.async_api import async_playwright, Browser, Page
 from base import BaseScraper, ListingResult
 from colors import error, info, warning, success
 from datetime import datetime
-import re
 import sys
 from debug_utils import debug_print
 
@@ -245,7 +244,7 @@ class HiFiSharkScraper(BaseScraper):
                     from urllib.parse import urlparse
                     parsed = urlparse(relative_url)
                     source_site = parsed.netloc.replace('www.', '')
-                except:
+                except Exception:
                     pass
             else:
                 # Redirect URL - try to extract from image_url
@@ -266,7 +265,7 @@ class HiFiSharkScraper(BaseScraper):
                             domain = parsed.netloc.replace('www.', '')
                             if domain and not domain.startswith('hifishark'):
                                 source_site = domain
-                    except:
+                    except Exception:
                         pass
 
             # Extract image URL
@@ -295,7 +294,7 @@ class HiFiSharkScraper(BaseScraper):
                     try:
                         dt = datetime.fromtimestamp(display_date)
                         posted_date = dt.strftime('%Y-%m-%d')
-                    except:
+                    except Exception:
                         pass
 
             # Store raw data for debugging
@@ -320,7 +319,7 @@ class HiFiSharkScraper(BaseScraper):
             )
 
         except Exception as e:
-            print(f"{error(f'Error parsing HiFiShark hit:')} {e}", file=sys.stderr)
+            print(f"{error('Error parsing HiFiShark hit:')} {e}", file=sys.stderr)
             return None
 
     async def close(self):
